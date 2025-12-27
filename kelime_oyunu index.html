@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KelimeMatik Bulut Sistemi</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="manifest" href="data:application/manifest+json,{'name':'KelimeMatikCloud','short_name':'Kelime','start_url':'.','display':'standalone','background_color':'#f0f2f5'}">
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        :root { --bg: #f0f2f5; --card: #ffffff; --primary: #4834d4; --success: #2ecc71; --danger: #eb4d4b; --text: #2d3436; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .container { width: 100%; max-width: 600px; display: none; }
+        .login-card { background: white; padding: 40px; border-radius: 20px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.1); margin-top: 50px; width: 350px; }
+        .card { background: var(--card); padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .import-box { border: 2px dashed #ccc; padding: 15px; border-radius: 10px; background: #fafafa; }
+        textarea { width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 10px; font-size: 14px; box-sizing: border-box; resize: vertical; }
+        .stats-bar { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 20px; }
+        .stat-item { flex: 1; background: var(--primary); color: white; padding: 10px; border-radius: 12px; text-align: center; }
+        .stat-item span { display: block; font-size: 18px; font-weight: bold; }
+        #question { font-size: 32px; font-weight: bold; margin: 20px 0; color: var(--primary); text-align: center; }
+        input[type="text"] { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 18px; text-align: center; box-sizing: border-box; outline: none; }
+        button { width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        .google-btn { background: white; color: #444; border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .btn-add { background: var(--success); color: white; }
+        .btn-check { background: var(--primary); color: white; margin-top: 15px; }
+        .collapsible { background-color: #eee; cursor: pointer; padding: 15px; width: 100%; border: none; text-align: left; border-radius: 10px; font-weight: bold; display: flex; justify-content: space-between; margin-top: 10px; }
+        .content { padding: 0 15px; display: none; background-color: white; border: 1px solid #eee; border-radius: 0 0 10px 10px; }
+        .error-msg { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; text-align: center; font-weight: bold; }
+        .mistake-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+        #loadingOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay">Yükleniyor...</div>
+
+    <div id="loginArea" class="login-card" style="display: none;">
+        <h2>KelimeMatik Bulut</h2>
+        <p>Hesabına her yerden ulaşmak için giriş yap.</p>
+        <button class="google-btn" onclick="login()">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/action/google.svg" width="20"> Google ile Giriş Yap
+        </button>
+    </div>
+
+    <div id="mainContainer" class="container">
+        <div class="card">
+            <div style="display:flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin:0">📥 Kelime Yükle</h3>
+                <button onclick="logout()" style="width:auto; padding:5px 10px; font-size:11px; background:#666; color:white;">Çıkış Yap</button>
+            </div>
+            <div class="import-box" style="margin-top:10px;">
+                <textarea id="excelInput" rows="2" placeholder="İngilizce [TAB] Türkçe"></textarea>
+                <button class="btn-add" onclick="importData()">Buluta Kaydet</button>
+            </div>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">Tur<span id="roundCounter">1</span></div>
+            <div class="stat-item">Kalan<span id="remainingInRound">0</span></div>
+            <div class="stat-item">Başarı<span id="statRate">%0</span></div>
+        </div>
+
+        <div class="card">
+            <div id="roundProgress" style="text-align: center; font-size: 12px; color: #666;">Yükleniyor...</div>
+            <div id="question">Hazırlanıyor...</div>
+            <input type="text" id="answerField" placeholder="Cevabı yazın..." onkeypress="handleKey(event)" autocomplete="off">
+            <div id="feedback" style="font-size: 40px; text-align: center; height: 50px;"></div>
+            <div id="errorBox" class="error-msg"></div>
+            <button class="btn-check" onclick="checkAnswer()">Kontrol Et (Enter)</button>
+        </div>
+
+        <button type="button" class="collapsible" onclick="toggleCollapsible()">
+            🚨 Hata Listesi <span id="mistakeCount">0</span>
+        </button>
+        <div id="mistakeContent" class="content">
+            <div id="mistakeContainer" style="padding: 10px 0;"></div>
+            <button onclick="clearMistakes()" style="background:none; color:red; font-size:11px; text-decoration:underline; border:none; width:auto; cursor:pointer;">Listeyi Temizle</button>
+        </div>
+    </div>
+
+    <script>
+        // FİREBASE KONFİGÜRASYONU
+        const firebaseConfig = {
+            apiKey: "AIzaSyDteS3TH-IhIqZUg-AYI9DOOVNj5XqUIkQ",
+            authDomain: "kelime-tekrar.firebaseapp.com",
+            projectId: "kelime-tekrar",
+            storageBucket: "kelime-tekrar.firebasestorage.app",
+            messagingSenderId: "1095784194114",
+            appId: "1:1095784194114:web:1ca29a2001d16c217f0ddb",
+            measurementId: "G-JPTG5NZ1LF"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let words = [], mistakes = [], currentRoundWords = [], currentWord = null;
+        let stats = { total: 0, correct: 0, round: 1 };
+
+        // OTURUM TAKİBİ
+        auth.onAuthStateChanged(user => {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            if (user) {
+                document.getElementById('loginArea').style.display = 'none';
+                document.getElementById('mainContainer').style.display = 'block';
+                loadUserData();
+            } else {
+                document.getElementById('loginArea').style.display = 'block';
+                document.getElementById('mainContainer').style.display = 'none';
+                words = []; mistakes = [];
+            }
+        });
+
+        // Giriş yapma (Daha güvenli Redirect yöntemi)
+        function login() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithRedirect(provider);
+        }
+
+        function logout() { auth.signOut(); location.reload(); }
+
+        async function loadUserData() {
+            const userDoc = await db.collection("users").doc(auth.currentUser.uid).get();
+            if (userDoc.exists) {
+                const data = userDoc.data();
+                words = data.words || [];
+                mistakes = data.mistakes || [];
+                if(words.length > 0) startNewRound();
+                refreshDisplay();
+            }
+        }
+
+        async function saveData() {
+            if(!auth.currentUser) return;
+            await db.collection("users").doc(auth.currentUser.uid).set({
+                words: words,
+                mistakes: mistakes
+            });
+        }
+
+        function importData() {
+            const input = document.getElementById('excelInput').value.trim();
+            if(!input) return;
+            input.split('\n').forEach(line => {
+                const parts = line.split('\t');
+                if(parts.length >= 2) words.push({ eng: parts[0].trim(), tr: parts[1].trim() });
+            });
+            saveData();
+            document.getElementById('excelInput').value = "";
+            alert("Kelimeler buluta kaydedildi!");
+            startNewRound();
+        }
+
+        function startNewRound() {
+            if (words.length === 0) return;
+            currentRoundWords = [...words].sort(() => Math.random() - 0.5);
+            if(stats.total > 0) stats.round++;
+            nextQuestion();
+        }
+
+        function nextQuestion() {
+            if (currentRoundWords.length === 0) {
+                startNewRound();
+                return;
+            }
+            currentWord = currentRoundWords.pop();
+            document.getElementById('question').innerText = currentWord.eng;
+            document.getElementById('feedback').innerText = "";
+            document.getElementById('errorBox').style.display = "none";
+            document.getElementById('answerField').value = "";
+            document.getElementById('answerField').focus();
+            refreshDisplay();
+        }
+
+        function checkAnswer() {
+            if(!currentWord) return;
+            const userVal = document.getElementById('answerField').value.toLowerCase().split(',').map(i=>i.trim()).filter(i=>i);
+            const correctVal = currentWord.tr.toLowerCase().split(',').map(i=>i.trim());
+            const isOk = userVal.length === correctVal.length && userVal.every(v => correctVal.includes(v));
+            
+            stats.total++;
+            const fb = document.getElementById('feedback');
+            if(isOk) {
+                fb.innerText = "✅";
+                fb.style.color = "var(--success)";
+                stats.correct++;
+                setTimeout(nextQuestion, 800);
+            } else {
+                fb.innerText = "❌";
+                fb.style.color = "var(--danger)";
+                if(!mistakes.some(m => m.eng === currentWord.eng)) {
+                    mistakes.push(currentWord);
+                    saveData();
+                }
+                currentRoundWords.unshift(currentWord);
+                document.getElementById('errorBox').innerText = "Doğrusu: " + currentWord.tr;
+                document.getElementById('errorBox').style.display = "block";
+                setTimeout(nextQuestion, 2500);
+            }
+            refreshDisplay();
+        }
+
+        function refreshDisplay() {
+            document.getElementById('roundCounter').innerText = stats.round;
+            document.getElementById('remainingInRound').innerText = currentRoundWords.length;
+            document.getElementById('statRate').innerText = "%" + (stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0);
+            document.getElementById('mistakeCount').innerText = mistakes.length;
+            document.getElementById('roundProgress').innerText = `TUR ${stats.round}: ${currentRoundWords.length} KELİME KALDI`;
+            document.getElementById('mistakeContainer').innerHTML = mistakes.length > 0 ? 
+                mistakes.map(m => `<div class="mistake-item"><b>${m.eng}</b> ${m.tr}</div>`).join('') : "Henüz hata yapılmadı.";
+        }
+
+        function toggleCollapsible() {
+            const content = document.getElementById("mistakeContent");
+            content.style.display = content.style.display === "block" ? "none" : "block";
+        }
+        function clearMistakes() { if(confirm("Hata listesi temizlensin mi?")) { mistakes = []; saveData(); refreshDisplay(); } }
+        function handleKey(e) { if(e.key === "Enter") checkAnswer(); }
+    </script>
+</body>
+</html>
